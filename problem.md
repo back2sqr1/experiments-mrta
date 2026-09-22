@@ -4,4 +4,5 @@ The problem is given a query in a boolean format, and a 2D environment (with no 
 
 Properties also follow constraints of the world, relationships between properties must be true. For example, if property "A" is true and property "B" is true, then it implies that properties "C" and "D" will be false.
 
-# 
+# The BDD
+The binary decision diagram is the combination of the world boolean formula and the query boolean formula. The world must be true 

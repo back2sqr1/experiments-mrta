@@ -3,15 +3,16 @@
 Not to be confused with the world MODEL (the constraint formula from
 generate.py that filters situations): the InvestigationSpace is the map
 the robots move through. Sites are 2d points; each site holds a subset
-of the properties; a property may be witnessed at several sites, and a
-site may hold several properties (one stop resolves all of them). Site
+of the properties; a property may be held by several sites, and a site
+may hold several properties (one stop resolves all of them). Site
 information is static -- observing never changes it.
 
-Robots start at coordinates (not on a site); the two-robot fleet is the
-default. The class guarantees every query property has at least one
-witness site -- an unobservable property would make some worlds forever
-undecidable, so it is unrepresentable here.
+Robots start at coordinates, never on a site; the two-robot fleet is the
+default. check_query raises if a query property is held by no site: an
+unobservable property would make some worlds forever undecidable.
 """
+
+EPS = 1e-9  # points closer than this count as the same point
 
 
 class InvestigationSpace:
@@ -20,9 +21,7 @@ class InvestigationSpace:
     sites: list of names (any strings).
     coords: dict site -> (x, y).
     site_props: dict site -> list of property names.
-    robots: dict robot name -> (x, y). A robot starting exactly on a
-    site learns that site's properties at t=0 for free (see
-    initial_observations).
+    robots: dict robot name -> (x, y), never on a site.
     """
 
     def __init__(self, sites, coords, site_props, robots):
@@ -47,15 +46,18 @@ class InvestigationSpace:
         for r, p in self.robots.items():
             if not isinstance(p, tuple) or len(p) != 2:
                 raise ValueError("robot %s needs an (x, y) start" % r)
+            for s in self.sites:
+                x, y = self.coords[s]
+                if ((p[0] - x) ** 2 + (p[1] - y) ** 2) ** 0.5 <= EPS:
+                    raise ValueError("robot %s starts on site %s" % (r, s))
 
     def check_query(self, query):
-        """Every property the query depends on must be observable
-        somewhere; an unobservable property makes those worlds forever
-        undecidable."""
+        """Every property the query depends on must be held by some site;
+        an unobservable property makes those worlds forever undecidable."""
         missing = sorted(query.variables()
                          - {p for s in self.sites for p in self.site_props[s]})
         if missing:
-            raise ValueError("no site witnesses: %s" % ", ".join(missing))
+            raise ValueError("no site holds: %s" % ", ".join(missing))
 
     # --- lookups -----------------------------------------------------
     def props_at(self, site):
@@ -63,7 +65,7 @@ class InvestigationSpace:
         return tuple(self.site_props[site])
 
     def sites_with(self, prop):
-        """Every site where prop can be observed (witnesses)."""
+        """Every site that holds prop."""
         return [s for s in self.sites if prop in self.site_props[s]]
 
     def dist(self, a, b):
@@ -72,25 +74,10 @@ class InvestigationSpace:
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
 
     def leg(self, robot, dest):
-        """Distance of one move: from the robot's current position (a
-        point, possibly off-site) to dest's coordinates."""
+        """Distance from the robot's start to site dest."""
         (x1, y1) = self.robots[robot]
         (x2, y2) = self.coords[dest]
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
-
-    # --- initial observations ------------------------------------------
-    def initial_observations(self):
-        """Properties resolved at t=0 because a robot starts on a site
-        that witnesses them. Returns dict prop -> bool is not decidable
-        (the site's static value is unknown before a world is chosen), so
-        this returns the set of properties learned, and the caller pairs
-        it with the found values during execution."""
-        covered = set()
-        for r, pos in self.robots.items():
-            for s in self.sites:
-                if self.coords[s] == pos:
-                    covered |= set(self.site_props[s])
-        return covered
 
     def __str__(self):
         rows = ["sites:"]
